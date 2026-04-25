@@ -4,5 +4,14 @@ import { defineConfig } from 'vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), vanillaExtractPlugin()]
+  plugins: [react(), vanillaExtractPlugin()],
+  server: {
+    proxy: {
+      '/api': 'http://deep01.local:8188',
+      '/ws': {
+        target: 'ws://deep01.local:8188',
+        ws: true
+      }
+    }
+  }
 });

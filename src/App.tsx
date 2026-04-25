@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import About from './About';
 import Home from './Home';
+import MockPage from './Mock';
 import NotFound from './NotFound';
 import { theme } from './theme';
 
@@ -13,6 +14,7 @@ export default function App() {
         <Routes>
           <Route path='/' element={<Home />} />
           <Route path='/about' element={<About />} />
+          <Route path='/mock' element={<MockPage />} />
           <Route path='*' element={<NotFound />} />
         </Routes>
       </BrowserRouter>
