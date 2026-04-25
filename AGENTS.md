@@ -1,10 +1,13 @@
+ローカルのcomfyuiで画像生成したいがcomfyuiのUIは使いづらいのでcomfyui内蔵のAPIを叩くラッパーフロントエンド
+
 # 1. 全体方針・コミュニケーション
 
 - ユーザーは日本人です。コード内コメント・最終出力メッセージ・ユーザーへの質問は日本語でお願いします。
 - 既存のコードコメントは、明示的な指示がない限り変更しない。
 - `src/scripts` 以下の TypeScript コードを実行するときは `node --import tsx ./src/scripts/hello.ts`
-- 指示されるまではAIのモデル名(gpt-4oなど)は勝手に変更しないこと
 - https://deepwiki.com/mantinedev/mantine
+- comfyui APIはopenapi.yamlが仕様書
+- ユーザー認証系は不要 セッションはすべてlocalstorageに保存する(mantine use-local-storage) PC スマホ両方対応
 
 ライブラリ概要
 
