@@ -8,6 +8,7 @@
 - https://deepwiki.com/mantinedev/mantine
 - comfyui APIはopenapi.yamlが仕様書
 - ユーザー認証系は不要 セッションはすべてlocalstorageに保存する(mantine use-local-storage) PC スマホ両方対応
+- playwright-cliは指示があるときのみ使用する
 
 ライブラリ概要
 
