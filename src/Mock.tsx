@@ -247,8 +247,8 @@ const GenerateView = ({ workflows, onAddWorkflow }: GenerateViewProps) => {
     const timer = setInterval(() => {
       step += 1;
       setCurrentStep(step);
-      setCurrentProgress(Math.round(step / total * 100));
-      setTotalProgress(Math.round(((imgIdx - 1) * total + step) / (count * total) * 100));
+      setCurrentProgress(Math.round((step / total) * 100));
+      setTotalProgress(Math.round((((imgIdx - 1) * total + step) / (count * total)) * 100));
       if (step >= total) {
         const hue = MOCK_IMAGE_HUES[(imgIdx - 1) % MOCK_IMAGE_HUES.length];
         setGeneratedImages((prev) => [...prev, hue]);
@@ -375,7 +375,9 @@ const GenerateView = ({ workflows, onAddWorkflow }: GenerateViewProps) => {
             disabled={generating}
             fullWidth
           >
-            {generating ? `生成中... (画像 ${currentImageIndex}/${imageCount}, ステップ ${currentStep}/20)` : `生成（${imageCount}枚）`}
+            {generating
+              ? `生成中... (画像 ${currentImageIndex}/${imageCount}, ステップ ${currentStep}/20)`
+              : `生成（${imageCount}枚）`}
           </Button>
           {generating && (
             <Button variant='outline' color='red' leftSection={<IconPlayerStop size={16} />} size='sm'>
@@ -406,7 +408,9 @@ const GenerateView = ({ workflows, onAddWorkflow }: GenerateViewProps) => {
                       <Text size='xs' c='dimmed'>
                         全体: {imageCount}枚中 {generatedImages.length + 1}枚目
                       </Text>
-                      <Text size='xs' c='dimmed'>{totalProgress}%</Text>
+                      <Text size='xs' c='dimmed'>
+                        {totalProgress}%
+                      </Text>
                     </Group>
                     <Progress value={totalProgress} size='xs' color='gray' mb='xs' />
                   </Box>
@@ -444,14 +448,18 @@ const GenerateView = ({ workflows, onAddWorkflow }: GenerateViewProps) => {
                         }}
                       >
                         <IconBolt size={36} color='var(--mantine-color-blue-6)' />
-                        <Text c='dimmed' size='sm'>生成中...</Text>
+                        <Text c='dimmed' size='sm'>
+                          生成中...
+                        </Text>
                       </Box>
                       <Box p='xs'>
                         <Group justify='space-between' mb={4}>
                           <Text size='xs' c='dimmed'>
                             ステップ {currentStep}/20
                           </Text>
-                          <Text size='xs' c='dimmed'>{currentProgress}%</Text>
+                          <Text size='xs' c='dimmed'>
+                            {currentProgress}%
+                          </Text>
                         </Group>
                         <Progress value={currentProgress} animated size='sm' />
                       </Box>
@@ -669,11 +677,7 @@ export default function MockPage() {
               ComfyUI WebUI
             </Title>
           </Group>
-          <Group gap='xs'>
-            <Badge variant='light' color='blue' leftSection={<IconList size={12} />}>
-              キュー: {MOCK_QUEUE.length}件
-            </Badge>
-          </Group>
+          <Group gap='xs'>@amanekey</Group>
         </Group>
       </AppShell.Header>
 
