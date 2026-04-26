@@ -7,6 +7,7 @@
     "dev": "vite --host",
     "build": "tsc && vite build",
     "lint": "biome check --write --unsafe ./src && npx tsc --noEmit",
+    "test": "vitest run",
     "preview": "vite preview",
     "serve": "python -m http.server -d dist"
   },
@@ -20,7 +21,8 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.14.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",

@@ -12,6 +12,7 @@ import {
   Grid,
   Group,
   Image,
+  Modal,
   NavLink,
   NumberInput,
   Progress,
@@ -29,27 +30,25 @@ import {
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconBolt,
+  IconCheck,
   IconDownload,
   IconHistory,
   IconList,
+  IconPencil,
   IconPhoto,
   IconPlayerStop,
   IconRefresh,
   IconSettings,
   IconTrash,
   IconUpload,
-  IconWand
+  IconWand,
+  IconX
 } from '@tabler/icons-react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import type { Workflow } from './utils';
+import { injectPrompts, isWorkflow } from './utils';
 
 type NavSection = 'generate' | 'history' | 'queue' | 'settings';
-
-type WorkflowNode = {
-  class_type: string;
-  inputs: Record<string, unknown>;
-};
-
-type Workflow = Record<string, WorkflowNode>;
 
 type StoredWorkflow = {
   id: string;
@@ -121,37 +120,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   serverUrl: 'http://127.0.0.1:8188',
   defaultSteps: 20,
   defaultCfg: 7
-};
-
-const isWorkflow = (json: unknown): json is Workflow => {
-  if (typeof json !== 'object' || json === null) return false;
-  return Object.values(json as Record<string, unknown>).every(
-    (v) => typeof v === 'object' && v !== null && 'class_type' in v && 'inputs' in v
-  );
-};
-
-const findPositiveNodeId = (workflow: Workflow): string | null => {
-  for (const node of Object.values(workflow)) {
-    if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') {
-      const positive = node.inputs.positive;
-      if (Array.isArray(positive) && typeof positive[0] === 'string') {
-        return positive[0];
-      }
-    }
-  }
-  return null;
-};
-
-const findNegativeNodeId = (workflow: Workflow): string | null => {
-  for (const node of Object.values(workflow)) {
-    if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') {
-      const negative = node.inputs.negative;
-      if (Array.isArray(negative) && typeof negative[0] === 'string') {
-        return negative[0];
-      }
-    }
-  }
-  return null;
 };
 
 const buildViewUrl = (serverUrl: string, item: ResultItem): string => {
@@ -293,16 +261,7 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
     setCompletedCount(0);
     completedCountRef.current = 0;
 
-    // プロンプト/ネガティブプロンプトを注入したベースワークフローを作成
-    const baseWf: Workflow = structuredClone(selectedWorkflow.json);
-    const positiveNodeId = findPositiveNodeId(baseWf);
-    if (positiveNodeId && baseWf[positiveNodeId]) {
-      baseWf[positiveNodeId].inputs.text = prompt;
-    }
-    const negativeNodeId = findNegativeNodeId(baseWf);
-    if (negativeNodeId && baseWf[negativeNodeId]) {
-      baseWf[negativeNodeId].inputs.text = negativePrompt;
-    }
+    const baseWf = injectPrompts(selectedWorkflow.json, prompt, negativePrompt);
 
     try {
       // count 枚分のプロンプトをキューに投入
@@ -892,13 +851,39 @@ type SettingsViewProps = {
   onSaveSettings: (s: AppSettings) => void;
   workflows: StoredWorkflow[];
   onDeleteWorkflow: (id: string) => void;
+  onRenameWorkflow: (id: string, name: string) => void;
 };
 
-const SettingsView = ({ settings, onSaveSettings, workflows, onDeleteWorkflow }: SettingsViewProps) => {
+const SettingsView = ({
+  settings,
+  onSaveSettings,
+  workflows,
+  onDeleteWorkflow,
+  onRenameWorkflow
+}: SettingsViewProps) => {
   const [serverUrl, setServerUrl] = useState(settings.serverUrl);
   const [defaultSteps, setDefaultSteps] = useState(settings.defaultSteps);
   const [defaultCfg, setDefaultCfg] = useState(settings.defaultCfg);
   const [saved, setSaved] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const startEdit = (wf: StoredWorkflow) => {
+    setEditingId(wf.id);
+    setEditingName(wf.name);
+  };
+
+  const commitEdit = () => {
+    if (editingId && editingName.trim()) {
+      onRenameWorkflow(editingId, editingName.trim());
+    }
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
 
   const handleSave = () => {
     onSaveSettings({ serverUrl, defaultSteps, defaultCfg });
@@ -906,62 +891,121 @@ const SettingsView = ({ settings, onSaveSettings, workflows, onDeleteWorkflow }:
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const confirmDeleteWorkflow = workflows.find((w) => w.id === confirmDeleteId);
+
   return (
-    <Stack maw={480}>
-      <Title order={4}>設定</Title>
-
-      <TextInput
-        label='ComfyUI サーバー URL'
-        value={serverUrl}
-        onChange={(e) => setServerUrl(e.currentTarget.value)}
-        description='ComfyUI が起動しているホストとポートを指定'
-      />
-      <NumberInput
-        label='デフォルトステップ数'
-        value={defaultSteps}
-        onChange={(v) => setDefaultSteps(typeof v === 'number' ? v : 20)}
-        min={1}
-        max={150}
-      />
-      <NumberInput
-        label='デフォルト CFG スケール'
-        value={defaultCfg}
-        onChange={(v) => setDefaultCfg(typeof v === 'number' ? v : 7)}
-        min={1}
-        max={30}
-        step={0.5}
-      />
-
-      <Button size='md' w='fit-content' onClick={handleSave} color={saved ? 'teal' : 'blue'}>
-        {saved ? '保存しました' : '保存'}
-      </Button>
-
-      <Divider />
-
-      <Title order={5}>ワークフロー API JSON 一覧</Title>
-      {workflows.length === 0 ? (
-        <Text size='sm' c='dimmed'>
-          登録されているワークフローはありません
-        </Text>
-      ) : (
-        <Stack gap='xs'>
-          {workflows.map((wf) => (
-            <Group key={wf.id} justify='space-between'>
-              <Text size='sm'>{wf.name}</Text>
-              <Button
-                variant='subtle'
-                color='red'
-                size='xs'
-                leftSection={<IconTrash size={14} />}
-                onClick={() => onDeleteWorkflow(wf.id)}
-              >
-                削除
-              </Button>
-            </Group>
-          ))}
+    <>
+      <Modal
+        opened={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        title='ワークフローの削除'
+        size='sm'
+      >
+        <Stack>
+          <Text size='sm'>「{confirmDeleteWorkflow?.name}」を削除しますか？この操作は元に戻せません。</Text>
+          <Group justify='flex-end'>
+            <Button variant='default' size='sm' onClick={() => setConfirmDeleteId(null)}>
+              キャンセル
+            </Button>
+            <Button
+              color='red'
+              size='sm'
+              leftSection={<IconTrash size={14} />}
+              onClick={() => {
+                if (confirmDeleteId) onDeleteWorkflow(confirmDeleteId);
+                setConfirmDeleteId(null);
+              }}
+            >
+              削除
+            </Button>
+          </Group>
         </Stack>
-      )}
-    </Stack>
+      </Modal>
+      <Stack maw={480}>
+        <Title order={4}>設定</Title>
+
+        <TextInput
+          label='ComfyUI サーバー URL'
+          value={serverUrl}
+          onChange={(e) => setServerUrl(e.currentTarget.value)}
+          description='ComfyUI が起動しているホストとポートを指定'
+        />
+        <NumberInput
+          label='デフォルトステップ数'
+          value={defaultSteps}
+          onChange={(v) => setDefaultSteps(typeof v === 'number' ? v : 20)}
+          min={1}
+          max={150}
+        />
+        <NumberInput
+          label='デフォルト CFG スケール'
+          value={defaultCfg}
+          onChange={(v) => setDefaultCfg(typeof v === 'number' ? v : 7)}
+          min={1}
+          max={30}
+          step={0.5}
+        />
+
+        <Button size='md' w='fit-content' onClick={handleSave} color={saved ? 'teal' : 'blue'}>
+          {saved ? '保存しました' : '保存'}
+        </Button>
+
+        <Divider />
+
+        <Title order={5}>ワークフロー API JSON 一覧</Title>
+        {workflows.length === 0 ? (
+          <Text size='sm' c='dimmed'>
+            登録されているワークフローはありません
+          </Text>
+        ) : (
+          <Stack gap='xs'>
+            {workflows.map((wf) =>
+              editingId === wf.id ? (
+                <Group key={wf.id}>
+                  <TextInput
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitEdit();
+                      if (e.key === 'Escape') cancelEdit();
+                    }}
+                    size='xs'
+                    style={{ flex: 1 }}
+                    autoFocus
+                  />
+                  <Button variant='subtle' color='teal' size='xs' p={4} onClick={commitEdit}>
+                    <IconCheck size={14} />
+                  </Button>
+                  <Button variant='subtle' color='gray' size='xs' p={4} onClick={cancelEdit}>
+                    <IconX size={14} />
+                  </Button>
+                </Group>
+              ) : (
+                <Group key={wf.id} justify='space-between'>
+                  <Text size='sm' style={{ flex: 1 }}>
+                    {wf.name}
+                  </Text>
+                  <Group gap={4}>
+                    <Button variant='subtle' color='gray' size='xs' p={4} onClick={() => startEdit(wf)}>
+                      <IconPencil size={14} />
+                    </Button>
+                    <Button
+                      variant='subtle'
+                      color='red'
+                      size='xs'
+                      leftSection={<IconTrash size={14} />}
+                      onClick={() => setConfirmDeleteId(wf.id)}
+                    >
+                      削除
+                    </Button>
+                  </Group>
+                </Group>
+              )
+            )}
+          </Stack>
+        )}
+      </Stack>
+    </>
   );
 };
 
@@ -983,6 +1027,10 @@ export default function Home() {
 
   const handleDeleteWorkflow = (id: string) => {
     setWorkflows((prev) => prev.filter((w) => w.id !== id));
+  };
+
+  const handleRenameWorkflow = (id: string, name: string) => {
+    setWorkflows((prev) => prev.map((w) => (w.id === id ? { ...w, name } : w)));
   };
 
   const handleAddWorkflow = (workflow: StoredWorkflow) => {
@@ -1055,6 +1103,7 @@ export default function Home() {
             onSaveSettings={handleSaveSettings}
             workflows={workflows}
             onDeleteWorkflow={handleDeleteWorkflow}
+            onRenameWorkflow={handleRenameWorkflow}
           />
         )}
       </AppShell.Main>
