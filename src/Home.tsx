@@ -68,6 +68,11 @@ type GeneratedImage = {
   filename: string;
 };
 
+type DownloadableImage = {
+  url: string;
+  filename: string;
+};
+
 type ResultItem = {
   filename: string;
   subfolder: string;
@@ -104,6 +109,12 @@ type ApiPromptResponse = {
 type QueueItem = {
   promptId: string;
   status: 'running' | 'pending';
+};
+
+type GenerateFormStorage = {
+  selectedWorkflowId: string | null;
+  prompt: string;
+  negativePrompt: string;
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -149,6 +160,24 @@ const buildViewUrl = (serverUrl: string, item: ResultItem): string => {
   return `${serverUrl}/api/view?${params.toString()}`;
 };
 
+const downloadImage = async ({ url, filename }: DownloadableImage) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('画像のダウンロードに失敗しました');
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+};
+
 // ---
 
 type GenerateViewProps = {
@@ -159,7 +188,33 @@ type GenerateViewProps = {
   onAddWorkflow: (workflow: StoredWorkflow) => void;
 };
 
+const DEFAULT_GENERATE_FORM_STORAGE: GenerateFormStorage = {
+  selectedWorkflowId: null,
+  prompt: '',
+  negativePrompt: ''
+};
+
 const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWorkflow }: GenerateViewProps) => {
+  // useLocalStorage は非同期ハイドレーションのため、useState で初期化すると defaultValue を取り込んでしまう。
+  // フォーム値はここで保持する単一のソースとして直接読み書きする。
+  const [storedGenerateForm, setStoredGenerateForm] = useLocalStorage<GenerateFormStorage>({
+    key: 'comfyui_generate_form',
+    defaultValue: DEFAULT_GENERATE_FORM_STORAGE
+  });
+  const updateForm = useCallback(
+    (patch: Partial<GenerateFormStorage>) => {
+      setStoredGenerateForm((prev) => ({ ...prev, ...patch }));
+    },
+    [setStoredGenerateForm]
+  );
+  const prompt = storedGenerateForm.prompt;
+  const negativePrompt = storedGenerateForm.negativePrompt;
+  const selectedWorkflowId =
+    storedGenerateForm.selectedWorkflowId &&
+    workflows.some((workflow) => workflow.id === storedGenerateForm.selectedWorkflowId)
+      ? storedGenerateForm.selectedWorkflowId
+      : (workflows[0]?.id ?? null);
+
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
@@ -168,9 +223,6 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
   const [totalSteps, setTotalSteps] = useState(defaultSteps);
   const [completedCount, setCompletedCount] = useState(0);
   const [imageCount, setImageCount] = useState(1);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(workflows[0]?.id ?? null);
-  const [prompt, setPrompt] = useState('');
-  const [negativePrompt, setNegativePrompt] = useState('');
   const [steps, setSteps] = useState(defaultSteps);
   const [cfg, setCfg] = useState(defaultCfg);
   const [seed, setSeed] = useState(-1);
@@ -193,7 +245,7 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
         }
         const newWorkflow: StoredWorkflow = { id: `w-${Date.now()}`, name: file.name, json: parsed };
         onAddWorkflow(newWorkflow);
-        setSelectedWorkflowId(newWorkflow.id);
+        updateForm({ selectedWorkflowId: newWorkflow.id });
         setError(null);
       } catch {
         setError('JSONの解析に失敗しました');
@@ -352,6 +404,14 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
     setGenerating(false);
   };
 
+  const handleDownload = async (image: DownloadableImage) => {
+    try {
+      await downloadImage(image);
+    } catch {
+      setError('画像のダウンロードに失敗しました');
+    }
+  };
+
   const currentImageIndex = completedCount + 1;
   const isDone = !generating && generatedImages.length > 0;
 
@@ -364,7 +424,7 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
             placeholder='ワークフローを選択'
             data={workflows.map((w) => ({ value: w.id, label: w.name }))}
             value={selectedWorkflowId}
-            onChange={setSelectedWorkflowId}
+            onChange={(v) => updateForm({ selectedWorkflowId: v })}
           />
           <FileInput
             label='JSON をアップロード'
@@ -379,17 +439,17 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
             placeholder='生成したい画像の説明を入力...'
             rows={6}
             value={prompt}
-            onChange={(e) => setPrompt(e.currentTarget.value)}
+            onChange={(e) => updateForm({ prompt: e.currentTarget.value })}
           />
           <Textarea
             label='ネガティブプロンプト'
             placeholder='除外したい要素を入力...'
             rows={3}
             value={negativePrompt}
-            onChange={(e) => setNegativePrompt(e.currentTarget.value)}
+            onChange={(e) => updateForm({ negativePrompt: e.currentTarget.value })}
           />
 
-          <Accordion variant='separated'>
+          <Accordion variant='separated' defaultValue='basic'>
             <Accordion.Item value='basic'>
               <Accordion.Control>基本設定</Accordion.Control>
               <Accordion.Panel>
@@ -520,7 +580,7 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
                         <Text size='xs' c='dimmed' style={{ fontFamily: 'monospace' }}>
                           {img.filename}
                         </Text>
-                        <Button variant='subtle' size='xs' p={4} component='a' href={img.url} download={img.filename}>
+                        <Button variant='subtle' size='xs' p={4} onClick={() => void handleDownload(img)}>
                           <IconDownload size={14} />
                         </Button>
                       </Group>
@@ -622,6 +682,14 @@ const HistoryView = ({ serverUrl }: HistoryViewProps) => {
     loadHistory();
   }, [loadHistory]);
 
+  const handleDownload = async (image: DownloadableImage) => {
+    try {
+      await downloadImage(image);
+    } catch {
+      setError('画像のダウンロードに失敗しました');
+    }
+  };
+
   if (loading) return <Text>読み込み中...</Text>;
   if (error)
     return (
@@ -661,9 +729,26 @@ const HistoryView = ({ serverUrl }: HistoryViewProps) => {
                 </Box>
               )}
               <Stack p='xs' gap={4}>
-                <Text size='xs' c='dimmed' style={{ fontFamily: 'monospace' }}>
-                  {item.promptId.slice(0, 8)}...
-                </Text>
+                <Group justify='space-between' align='flex-start' gap='xs'>
+                  <Text size='xs' c='dimmed' style={{ fontFamily: 'monospace', flex: 1 }}>
+                    {item.promptId.slice(0, 8)}...
+                  </Text>
+                  {item.images[0] && (
+                    <Button
+                      variant='subtle'
+                      size='xs'
+                      p={4}
+                      onClick={() =>
+                        void handleDownload({
+                          url: buildViewUrl(serverUrl, item.images[0]),
+                          filename: item.images[0].filename
+                        })
+                      }
+                    >
+                      <IconDownload size={14} />
+                    </Button>
+                  )}
+                </Group>
                 {item.status === 'error' && (
                   <Badge color='red' size='xs'>
                     エラー
