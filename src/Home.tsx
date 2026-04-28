@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   Divider,
+  Drawer,
   FileInput,
   Grid,
   Group,
@@ -39,6 +40,7 @@ import {
   IconPlayerStop,
   IconRefresh,
   IconSettings,
+  IconTags,
   IconTrash,
   IconUpload,
   IconWand,
@@ -148,6 +150,109 @@ const downloadImage = async ({ url, filename }: DownloadableImage) => {
 
 // ---
 
+type TagScore = {
+  tag: string;
+  score: number;
+};
+
+type Text2TagsRequest = {
+  text: string;
+  translate_mode?: 'exact' | 'loose';
+};
+
+type Text2TagsResponse = {
+  tags: string[];
+  tags_str: string;
+  tag_scores: TagScore[];
+};
+
+const callText2Tags = async (req: Text2TagsRequest): Promise<Text2TagsResponse> => {
+  const res = await fetch('https://ai-api.turai.work/text2tags/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req)
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API error ${res.status}: ${body}`);
+  }
+  return res.json() as Promise<Text2TagsResponse>;
+};
+
+// ---
+
+type Text2TagsDrawerProps = {
+  opened: boolean;
+  onClose: () => void;
+  onSet: (tags: string) => void;
+};
+
+const Text2TagsDrawer = ({ opened, onClose, onSet }: Text2TagsDrawerProps) => {
+  const [input, setInput] = useState('');
+  const [result, setResult] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConvert = async () => {
+    if (!input.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await callText2Tags({ text: input, translate_mode: 'exact' });
+      setResult(res.tags_str);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'エラーが発生しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSet = () => {
+    onSet(result);
+    onClose();
+  };
+
+  return (
+    <Drawer opened={opened} onClose={onClose} title='Text2Tags' position='right' size='md'>
+      <Stack>
+        <Textarea
+          label='日本語で説明'
+          placeholder='金髪で青い目のツインテールの少女が座ってこっちを見ている'
+          rows={4}
+          value={input}
+          onChange={(e) => setInput(e.currentTarget.value)}
+        />
+        <Button
+          leftSection={<IconTags size={16} />}
+          onClick={() => void handleConvert()}
+          loading={loading}
+          disabled={!input.trim()}
+        >
+          タグ化
+        </Button>
+        {error && <Alert color='red'>{error}</Alert>}
+        {result && (
+          <Stack gap='xs'>
+            <Group justify='space-between' align='center'>
+              <Text size='sm' fw='bold'>
+                結果
+              </Text>
+              <Button size='sm' onClick={handleSet}>
+                セット
+              </Button>
+            </Group>
+            <Text size='sm' style={{ wordBreak: 'break-all' }}>
+              {result}
+            </Text>
+          </Stack>
+        )}
+      </Stack>
+    </Drawer>
+  );
+};
+
+// ---
+
 type GenerateViewProps = {
   workflows: StoredWorkflow[];
   serverUrl: string;
@@ -200,6 +305,7 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
   const wsRef = useRef<WebSocket | null>(null);
   // クロージャ内から最新の completedCount を参照するための ref
   const completedCountRef = useRef(0);
+  const [t2tDrawerOpened, { open: openT2tDrawer, close: closeT2tDrawer }] = useDisclosure(false);
 
   const totalProgress = Math.round((completedCount * 100 + currentImageProgress) / imageCount);
 
@@ -405,6 +511,20 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
             rows={6}
             value={prompt}
             onChange={(e) => updateForm({ prompt: e.currentTarget.value })}
+          />
+          <Button
+            variant='light'
+            size='sm'
+            leftSection={<IconTags size={16} />}
+            onClick={openT2tDrawer}
+            w='fit-content'
+          >
+            Text2Tags
+          </Button>
+          <Text2TagsDrawer
+            opened={t2tDrawerOpened}
+            onClose={closeT2tDrawer}
+            onSet={(tags) => updateForm({ prompt: tags })}
           />
           <Textarea
             label='ネガティブプロンプト'
