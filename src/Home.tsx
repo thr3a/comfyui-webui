@@ -48,7 +48,7 @@ import {
 } from '@tabler/icons-react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import type { Workflow } from './utils';
-import { injectPrompts, injectResolution, isWorkflow } from './utils';
+import { callText2Tags, injectPrompts, injectResolution, isWorkflow } from './utils';
 
 type NavSection = 'generate' | 'history' | 'queue' | 'settings';
 
@@ -115,6 +115,7 @@ type QueueItem = {
 type GenerateFormStorage = {
   selectedWorkflowId: string | null;
   prompt: string;
+  qualityPrompt: string;
   negativePrompt: string;
 };
 
@@ -146,37 +147,6 @@ const downloadImage = async ({ url, filename }: DownloadableImage) => {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-};
-
-// ---
-
-type TagScore = {
-  tag: string;
-  score: number;
-};
-
-type Text2TagsRequest = {
-  text: string;
-  translate_mode?: 'exact' | 'loose';
-};
-
-type Text2TagsResponse = {
-  tags: string[];
-  tags_str: string;
-  tag_scores: TagScore[];
-};
-
-const callText2Tags = async (req: Text2TagsRequest): Promise<Text2TagsResponse> => {
-  const res = await fetch('https://ai-api.turai.work/text2tags/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req)
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json() as Promise<Text2TagsResponse>;
 };
 
 // ---
@@ -264,6 +234,7 @@ type GenerateViewProps = {
 const DEFAULT_GENERATE_FORM_STORAGE: GenerateFormStorage = {
   selectedWorkflowId: null,
   prompt: '',
+  qualityPrompt: '',
   negativePrompt: ''
 };
 
@@ -281,6 +252,7 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
     [setStoredGenerateForm]
   );
   const prompt = storedGenerateForm.prompt;
+  const qualityPrompt = storedGenerateForm.qualityPrompt ?? '';
   const negativePrompt = storedGenerateForm.negativePrompt;
   const selectedWorkflowId =
     storedGenerateForm.selectedWorkflowId &&
@@ -369,8 +341,9 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
     setCompletedCount(0);
     completedCountRef.current = 0;
 
+    const combinedPrompt = [qualityPrompt.trim(), prompt.trim()].filter(Boolean).join(',');
     const baseWf = injectResolution(
-      injectPrompts(selectedWorkflow.json, prompt, negativePrompt),
+      injectPrompts(selectedWorkflow.json, combinedPrompt, negativePrompt),
       imageWidth,
       imageHeight
     );
@@ -526,6 +499,28 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
             onClose={closeT2tDrawer}
             onSet={(tags) => updateForm({ prompt: tags })}
           />
+          <Box>
+            <Text size='sm' mb={4}>
+              クオリティプロンプト
+            </Text>
+            <Group gap='xs' align='flex-start'>
+              <Textarea
+                rows={1}
+                value={qualityPrompt}
+                onChange={(e) => updateForm({ qualityPrompt: e.currentTarget.value })}
+                style={{ flex: 1 }}
+              />
+              <Button
+                size='sm'
+                variant='default'
+                onClick={() =>
+                  updateForm({ qualityPrompt: 'masterpiece,best quality,ultra-detailed,amazing quality,' })
+                }
+              >
+                ✨
+              </Button>
+            </Group>
+          </Box>
           <Textarea
             label='ネガティブプロンプト'
             placeholder='除外したい要素を入力...'
