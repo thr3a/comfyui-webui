@@ -46,7 +46,7 @@ import {
 } from '@tabler/icons-react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import type { Workflow } from './utils';
-import { injectPrompts, isWorkflow } from './utils';
+import { injectPrompts, injectResolution, isWorkflow } from './utils';
 
 type NavSection = 'generate' | 'history' | 'queue' | 'settings';
 
@@ -194,6 +194,8 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
   const [steps, setSteps] = useState(defaultSteps);
   const [cfg, setCfg] = useState(defaultCfg);
   const [seed, setSeed] = useState(-1);
+  const [imageWidth, setImageWidth] = useState(1024);
+  const [imageHeight, setImageHeight] = useState(1024);
   const clientId = useRef(crypto.randomUUID());
   const wsRef = useRef<WebSocket | null>(null);
   // クロージャ内から最新の completedCount を参照するための ref
@@ -261,7 +263,11 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
     setCompletedCount(0);
     completedCountRef.current = 0;
 
-    const baseWf = injectPrompts(selectedWorkflow.json, prompt, negativePrompt);
+    const baseWf = injectResolution(
+      injectPrompts(selectedWorkflow.json, prompt, negativePrompt),
+      imageWidth,
+      imageHeight
+    );
 
     try {
       // count 枚分のプロンプトをキューに投入
@@ -419,6 +425,24 @@ const GenerateView = ({ workflows, serverUrl, defaultSteps, defaultCfg, onAddWor
                     value={String(imageCount)}
                     onChange={(v) => setImageCount(Number(v ?? '1'))}
                   />
+                  <Group grow>
+                    <NumberInput
+                      label='幅 (px)'
+                      value={imageWidth}
+                      onChange={(v) => setImageWidth(typeof v === 'number' ? v : 1024)}
+                      min={64}
+                      max={4096}
+                      step={64}
+                    />
+                    <NumberInput
+                      label='高さ (px)'
+                      value={imageHeight}
+                      onChange={(v) => setImageHeight(typeof v === 'number' ? v : 1024)}
+                      min={64}
+                      max={4096}
+                      step={64}
+                    />
+                  </Group>
                   <Box>
                     <Text size='sm' mb={4}>
                       ステップ数: {steps}

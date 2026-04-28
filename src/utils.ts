@@ -12,6 +12,19 @@ export const isWorkflow = (json: unknown): json is Workflow => {
   );
 };
 
+export const injectResolution = (workflow: Workflow, width: number, height: number): Workflow => {
+  const result: Workflow = structuredClone(workflow);
+  for (const node of Object.values(result)) {
+    if (typeof node.inputs.width === 'number') {
+      node.inputs.width = width;
+    }
+    if (typeof node.inputs.height === 'number') {
+      node.inputs.height = height;
+    }
+  }
+  return result;
+};
+
 export const injectPrompts = (workflow: Workflow, prompt: string, negativePrompt: string): Workflow => {
   const result: Workflow = structuredClone(workflow);
   for (const node of Object.values(result)) {
